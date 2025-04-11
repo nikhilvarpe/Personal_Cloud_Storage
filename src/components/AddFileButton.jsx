@@ -13,93 +13,89 @@ export default function AddFileButton({ currentFolder }) {
   const { showAlert } = useAlert();
 
   function handleUpload(e) {
-    const file = e.target.files[0];
-    if (currentFolder == null || file == null) return;
+    const files = Array.from(e.target.files);
+    if (currentFolder == null || files.length === 0) return;
 
-    const id = uuidV4();
-    setUploadingFiles((prevUploadingFiles) => [
-      ...prevUploadingFiles,
-      { id: id, name: file.name, progress: 0, error: false },
-    ]);
-    const filePath =
-      currentFolder === ROOT_FOLDER
-        ? `${currentFolder.path.join("/")}/${file.name}`
-        : `${currentFolder.path.join("/")}/${currentFolder.name}/${file.name}`;
+    files.forEach((file) => {
+      const id = uuidV4();
+      setUploadingFiles((prev) => [
+        ...prev,
+        { id, name: file.name, progress: 0, error: false },
+      ]);
 
-    const uploadTask = storage
-      .ref(`/files/${currentUser.uid}/${filePath}`)
-      .put(file);
+      const filePath =
+        currentFolder === ROOT_FOLDER
+          ? `${currentFolder.path.join("/")}/${file.name}`
+          : `${currentFolder.path.join("/")}/${currentFolder.name}/${file.name}`;
 
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        const progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        setUploadingFiles((prevUploadingFiles) => {
-          return prevUploadingFiles.map((uploadFile) => {
-            if (uploadFile.id === id) {
-              return { ...uploadFile, progress: progress };
-            }
+      const uploadTask = storage
+        .ref(`/files/${currentUser.uid}/${filePath}`)
+        .put(file);
 
-            return uploadFile;
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          setUploadingFiles((prev) =>
+            prev.map((f) =>
+              f.id === id ? { ...f, progress } : f
+            )
+          );
+        },
+        () => {
+          setUploadingFiles((prev) =>
+            prev.map((f) =>
+              f.id === id ? { ...f, error: true } : f
+            )
+          );
+        },
+        () => {
+          setUploadingFiles((prev) =>
+            prev.filter((f) => f.id !== id)
+          );
+
+          uploadTask.snapshot.ref.getDownloadURL().then((url) => {
+            db.files
+              .where("name", "==", file.name)
+              .where("userId", "==", currentUser.uid)
+              .where("folderId", "==", currentFolder.id)
+              .get()
+              .then((existingFiles) => {
+                const existingFile = existingFiles.docs[0];
+                if (existingFile) {
+                  existingFile.ref.update({ url });
+                } else {
+                  db.files.add({
+                    url,
+                    name: file.name,
+                    createdAt: db.getCurrentTimestamp(),
+                    folderId: currentFolder.id,
+                    userId: currentUser.uid,
+                    size: file.size,
+                  });
+                }
+              });
           });
-        });
-      },
-      () => {
-        setUploadingFiles((prevUploadingFiles) => {
-          return prevUploadingFiles.map((uploadFile) => {
-            if (uploadFile.id === id) {
-              return { ...uploadFile, error: true };
-            }
-            return uploadFile;
-          });
-        });
-      },
-      () => {
-        setUploadingFiles((prevUploadingFiles) => {
-          return prevUploadingFiles.filter((uploadFile) => {
-            return uploadFile.id !== id;
-          });
-        });
 
-        uploadTask.snapshot.ref.getDownloadURL().then((url) => {
-          db.files
-            .where("name", "==", file.name)
-            .where("userId", "==", currentUser.uid)
-            .where("folderId", "==", currentFolder.id)
-            .get()
-            .then((existingFiles) => {
-              const existingFile = existingFiles.docs[0];
-              if (existingFile) {
-                existingFile.ref.update({ url: url });
-              } else {
-                db.files.add({
-                  url: url,
-                  name: file.name,
-                  createdAt: db.getCurrentTimestamp(),
-                  folderId: currentFolder.id,
-                  userId: currentUser.uid,
-                  size: file.size,
-                });
-              }
-            });
-        });
-
-        showAlert(ALERT_CLASSES.SUCCESS, "Upload completed successfully");
-      },
-    );
+          showAlert(ALERT_CLASSES.SUCCESS, `Files uploaded successfully`);
+        }
+      );
+    });
   }
 
   return (
     <>
       <label className="btn btn-primary flex-grow overflow-hidden">
         <FileUp />
-        <span>Upload File</span>
+        <span>Upload File(s)</span>
         <input
           type="file"
+          multiple
           onChange={handleUpload}
           className="absolute -left-96 opacity-0"
         />
       </label>
+
       {uploadingFiles.length > 0 &&
         uploadingFiles.map((file) => (
           <dialog
@@ -107,17 +103,18 @@ export default function AddFileButton({ currentFolder }) {
             className="modal modal-open"
           >
             <div className="modal-box flex min-w-64 flex-col gap-4">
-              {file.name}
+              <div className="font-semibold">{file.name}</div>
               <progress
-                className="progress progress-primary"
+                className={`progress ${file.error ? "progress-error" : "progress-primary"}`}
                 value={file.error ? 100 : file.progress * 100}
                 max="100"
               />
+              {file.error && (
+                <span className="text-sm text-red-500">Upload failed</span>
+              )}
             </div>
           </dialog>
         ))}
     </>
   );
 }
-
-
