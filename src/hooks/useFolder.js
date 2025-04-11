@@ -1,4 +1,4 @@
-import __vite__cjsImport0_react from "/node_modules/.vite/deps/react.js?v=1d6e588b"; const useReducer = __vite__cjsImport0_react["useReducer"]; const useEffect = __vite__cjsImport0_react["useEffect"];
+import React, { useReducer, useEffect } from "react";
 import { useAuth } from "/src/contexts/AuthContext.jsx";
 import { db } from "/src/firebase.js";
 
